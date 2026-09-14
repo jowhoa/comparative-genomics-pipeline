@@ -16,3 +16,4 @@ __pycache__/
 *.bai
 *.fasta.gz
 *.fastq.gz
+busco_downloads/
