@@ -1,0 +1,18 @@
+# Ignore all large data and output
+data/
+results/
+logs/
+benchmarks/
+slurm/
+
+# Ignore Snakemake and Python hidden files
+.snakemake/
+__pycache__/
+.snakemake_timestamp
+
+# Extra safety net for heavy binaries
+*.bam
+*.sam
+*.bai
+*.fasta.gz
+*.fastq.gz

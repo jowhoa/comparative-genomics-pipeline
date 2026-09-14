@@ -1,0 +1,15 @@
+sample_sheet: "samples.tsv"
+
+# --- Phase 1: Assembly (hifiasm) ---
+# hifiasm automatically detects threads, but we set a cap for SLURM
+assembly_threads: 24
+
+# --- Phase 2: Annotation (BRAKER3) ---
+# BRAKER needs a name for the species database it builds
+species_name: "my_novel_organism"
+min_contig_length: 1000  # Ignore tiny, fragmented contigs
+
+# --- Phase 3: Phylogenetics (OrthoFinder & IQ-TREE) ---
+# The statistical model IQ-TREE uses to build the tree (MFP = ModelFinder Plus)
+iqtree_model: "MFP"
+bootstrap_replicates: 1000
