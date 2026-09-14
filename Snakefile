@@ -1,23 +1,24 @@
 import pandas as pd
 
-# 1. Load config and sample sheet
 configfile: "config.yaml"
 samples_df = pd.read_csv(config["sample_sheet"], sep="\t").set_index("sample_id", drop=False)
 
 PACBIO_SAMPLES = samples_df[samples_df['data_type'] == 'pacbio']['sample_id'].tolist()
+RNA_READS = samples_df[samples_df['data_type'] == 'rnaseq']['file_path'].iloc[0]
 
-# 2. Target rule (UPDATED)
+# --- Target Rule ---
 rule all:
     input:
         expand("results/01_assembly/{sample}.fasta", sample=PACBIO_SAMPLES),
         expand("results/01_assembly/QC/quast_{sample}/report.txt", sample=PACBIO_SAMPLES),
-        expand("results/01_assembly/QC/busco_{sample}/short_summary.txt", sample=PACBIO_SAMPLES)
+        expand("results/01_assembly/QC/busco_{sample}/short_summary.txt", sample=PACBIO_SAMPLES),
+        # NEW: We now ask for the final GFF3 annotation file
+        expand("results/02_annotation/{sample}_braker/braker.gff3", sample=PACBIO_SAMPLES)
 
-# 3. Input lookup function
+# --- Phase 1: Assembly & QC ---
 def get_pacbio_reads(wildcards):
     return samples_df.loc[wildcards.sample, "file_path"]
 
-# 4. Assembly Rule
 rule run_hifiasm:
     input:
         reads=get_pacbio_reads
@@ -26,19 +27,14 @@ rule run_hifiasm:
         fasta="results/01_assembly/{sample}.fasta"
     threads:
         config["assembly_threads"]
-    log:
-        "logs/hifiasm_{sample}.log"
-    benchmark:
-        "benchmarks/hifiasm_{sample}.txt"
     conda:
         "envs/assembly.yaml"
     shell:
         """
-        hifiasm -o results/01_assembly/{wildcards.sample} -t {threads} {input.reads} 2> {log}
+        hifiasm -o results/01_assembly/{wildcards.sample} -t {threads} {input.reads}
         awk '/^S/{{print ">"$2"\\n"$3}}' {output.gfa} > {output.fasta}
         """
 
-# 5. Physical QC Rule
 rule run_quast:
     input:
         "results/01_assembly/{sample}.fasta"
@@ -49,7 +45,6 @@ rule run_quast:
     shell:
         "quast.py {input} -o results/01_assembly/QC/quast_{wildcards.sample}"
 
-# 6. Biological QC Rule
 rule run_busco:
     input:
         "results/01_assembly/{sample}.fasta"
@@ -60,5 +55,42 @@ rule run_busco:
     conda:
         "envs/qc.yaml"
     shell:
-        # BUSCO automatically creates the out_path directory if it doesn't exist
         "busco -i {input} -o busco_{wildcards.sample} --out_path results/01_assembly/QC -l {params.lineage} -m genome --force"
+
+# --- Phase 2: Annotation ---
+rule map_rnaseq:
+    input:
+        genome="results/01_assembly/{sample}.fasta",
+        reads=RNA_READS
+    output:
+        bam="results/02_annotation/{sample}_rna_mapped.bam"
+    conda:
+        "envs/mapping.yaml"
+    shell:
+        "minimap2 -ax splice {input.genome} {input.reads} | samtools sort -o {output.bam}"
+
+# NEW RULE: BRAKER3
+rule run_braker:
+    input:
+        genome="results/01_assembly/{sample}.fasta",
+        bam="results/02_annotation/{sample}_rna_mapped.bam"
+    output:
+        # BRAKER creates a directory of files. We specify the main output file here.
+        gff3="results/02_annotation/{sample}_braker/braker.gff3"
+    params:
+        # We pull the species name from config.yaml so we can reuse this pipeline easily
+        species=config["species_name"]
+    threads:
+        8
+    conda:
+        "envs/annotation.yaml"
+    shell:
+        """
+        # Run the BRAKER3 pipeline
+        braker.pl \
+            --genome={input.genome} \
+            --bam={input.bam} \
+            --species={params.species}_{wildcards.sample} \
+            --workingdir=results/02_annotation/{wildcards.sample}_braker \
+            --threads={threads}
+        """
