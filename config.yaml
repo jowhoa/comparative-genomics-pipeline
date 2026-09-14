@@ -3,7 +3,7 @@ sample_sheet: "samples.tsv"
 # --- Phase 1: Assembly (hifiasm) ---
 # hifiasm automatically detects threads, but we set a cap for SLURM
 assembly_threads: 24
-
+busco_lineage: "eukaryota_odb10"
 # --- Phase 2: Annotation (BRAKER3) ---
 # BRAKER needs a name for the species database it builds
 species_name: "my_novel_organism"
