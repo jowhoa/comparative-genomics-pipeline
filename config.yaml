@@ -1,5 +1,5 @@
 sample_sheet: "samples.tsv"
-reference_genome: ""data/reference/GCA_026225685.1_Pinf1306_UCR_1_genomic.fna"
+reference_genome: "data/reference/phytophthora_reference.fasta"
 # --- Phase 1: Assembly (hifiasm) ---
 # hifiasm automatically detects threads, but we set a cap for SLURM
 assembly_threads: 24
