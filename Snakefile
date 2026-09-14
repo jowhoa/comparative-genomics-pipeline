@@ -6,15 +6,25 @@ samples_df = pd.read_csv(config["sample_sheet"], sep="\t").set_index("sample_id"
 PACBIO_SAMPLES = samples_df[samples_df['data_type'] == 'pacbio']['sample_id'].tolist()
 RNA_READS = samples_df[samples_df['data_type'] == 'rnaseq']['file_path'].iloc[0]
 
-# --- Target Rule ---
-rule all:
+# --- CHECKPOINT TARGETS ---
+
+# Target 1: Stop after assembly and QC
+rule run_assembly:
     input:
         expand("results/01_assembly/{sample}.fasta", sample=PACBIO_SAMPLES),
         expand("results/01_assembly/QC/quast_{sample}/report.txt", sample=PACBIO_SAMPLES),
-        expand("results/01_assembly/QC/busco_{sample}/short_summary.txt", sample=PACBIO_SAMPLES),
-        # NEW: We now ask for the final GFF3 annotation file
+        expand("results/01_assembly/QC/busco_{sample}/short_summary.txt", sample=PACBIO_SAMPLES)
+
+# Target 2: Stop after RNA mapping and Gene Prediction
+rule run_annotation:
+    input:
         expand("results/02_annotation/{sample}_braker/braker.gff3", sample=PACBIO_SAMPLES)
 
+# Target 3: The full pipeline (if you ever want to run it all at once)
+rule all:
+    input:
+        rules.run_assembly.input,
+        rules.run_annotation.input
 # --- Phase 1: Assembly & QC ---
 def get_pacbio_reads(wildcards):
     return samples_df.loc[wildcards.sample, "file_path"]
