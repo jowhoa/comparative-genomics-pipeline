@@ -14,7 +14,8 @@ rule run_assembly:
         expand("results/01_assembly/{sample}.fasta", sample=PACBIO_SAMPLES),
         expand("results/01_assembly/QC/quast_{sample}/report.txt", sample=PACBIO_SAMPLES),
         expand("results/01_assembly/QC/busco_{sample}/short_summary.txt", sample=PACBIO_SAMPLES),
-        expand("results/01_assembly/QC/blast_{sample}/{sample}.blast.out", sample=PACBIO_SAMPLES)
+        expand("results/01_assembly/QC/blast_{sample}/{sample}.blast.out", sample=PACBIO_SAMPLES),
+        expand("results/01_assembly/QC/blast_{sample}/{sample}_dotplot.png", sample=PACBIO_SAMPLES)
 rule run_blast:
     input:
         assembly="results/01_assembly/{sample}.fasta",
@@ -72,7 +73,7 @@ rule run_quast:
     conda:
         "envs/qc.yaml"
     shell:
-        "quast.py {input} -o results/01_assembly/QC/quast_{wildcards.sample}"
+        "quast.py {input} -o results/01_assembly/QC/quast_{wildcards.sample} --large"
 
 rule run_busco:
     input:
@@ -84,7 +85,13 @@ rule run_busco:
     conda:
         "envs/qc.yaml"
     shell:
-        "busco -i {input} -o busco_{wildcards.sample} --out_path results/01_assembly/QC -l {params.lineage} -m genome --force"
+        """
+        # 1. Run the normal BUSCO command
+        busco -i {input} -o busco_{wildcards.sample} --out_path results/01_assembly/QC -l eukaryota_odb10 -m genome --force
+        
+        # 2. Rename the dynamically generated file to match what Snakemake expects
+        mv results/01_assembly/QC/busco_{wildcards.sample}/short_summary.specific.*.txt {output}
+        """
 
 # --- Phase 2: Annotation ---
 rule map_rnaseq:
@@ -122,4 +129,20 @@ rule run_braker:
             --species={params.species}_{wildcards.sample} \
             --workingdir=results/02_annotation/{wildcards.sample}_braker \
             --threads={threads}
+        """
+rule generate_dotplot:
+    input:
+        blast="results/01_assembly/QC/blast_{sample}/{sample}.blast.out"
+    output:
+        plot="results/01_assembly/QC/blast_{sample}/{sample}_dotplot.png"
+    shell:
+        """
+        # 1. Automatically shrink the massive BLAST file
+        awk '$4 > 10000' {input.blast} > {input.blast}.tmp_filtered
+        
+        # 2. Pass the files directly to your Python script
+        python make_dotplot.py {input.blast}.tmp_filtered {output.plot}
+        
+        # 3. Clean up the temporary file to save storage space
+        rm {input.blast}.tmp_filtered
         """
