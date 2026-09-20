@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=phyto_test
-#SBATCH --time=02:00:00
-#SBATCH --mem=64G
+#SBATCH --time=24:00:00
+#SBATCH --mem=120G
 #SBATCH --cpus-per-task=8
 #SBATCH --output=slurm/pipeline_%j.log
 #SBATCH --error=slurm/pipeline_%j.err

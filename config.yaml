@@ -1,15 +1,35 @@
 sample_sheet: "samples.tsv"
 reference_genome: "data/reference/phytophthora_reference.fasta"
+
+# --- Organism Baseline Parameters ---
+organism:
+  name: "Phytophthora_infestans"
+  expected_genome_size_bp: 240000000  # ~240 Mb reference size
+  expected_min_coverage: 25.0
+  expected_max_coverage: 120.0
+
+# --- Pre-Assembly Read QC ---
+read_qc:
+  min_read_length: 1000
+  min_read_quality: 15
+  adapter_filter:
+    enabled: true
+    min_length_after_trim: 1000
+
+# --- Pre-Assembly K-mer & Ploidy Profiling ---
+kmer_profiling:
+  kmer_length: 21
+  max_kmer_coverage: 10000
+  ploidy: 2  # Baseline assumption for GenomeScope initialization
+
 # --- Phase 1: Assembly (hifiasm) ---
-# hifiasm automatically detects threads, but we set a cap for SLURM
 assembly_threads: 24
 busco_lineage: "eukaryota_odb10"
+
 # --- Phase 2: Annotation (BRAKER3) ---
-# BRAKER needs a name for the species database it builds
 species_name: "my_novel_organism"
 min_contig_length: 1000  # Ignore tiny, fragmented contigs
 
 # --- Phase 3: Phylogenetics (OrthoFinder & IQ-TREE) ---
-# The statistical model IQ-TREE uses to build the tree (MFP = ModelFinder Plus)
 iqtree_model: "MFP"
 bootstrap_replicates: 1000

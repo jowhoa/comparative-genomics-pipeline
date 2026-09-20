@@ -1,0 +1,13 @@
+name: read_qc_env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10
+  - nanoplot>=1.42.0
+  - seqkit>=2.8.0
+  - blast>=2.15.0
+  - bamtools>=2.5.2
+  - fastp>=0.23.4
+  - hifiadapterfilt>=3.0.0

@@ -2,12 +2,16 @@ import pandas as pd
 
 configfile: "config.yaml"
 samples_df = pd.read_csv(config["sample_sheet"], sep="\t").set_index("sample_id", drop=False)
-
 PACBIO_SAMPLES = samples_df[samples_df['data_type'] == 'pacbio']['sample_id'].tolist()
-RNA_READS = samples_df[samples_df['data_type'] == 'rnaseq']['file_path'].iloc[0]
-
+rna_matches = samples_df[samples_df['data_type'] == 'rnaseq']['file_path']
+RNA_READS = [rna_matches.iloc[0]] if not rna_matches.empty else []
+include: "workflow/rules/01_pre_assembly_qc.smk"
 # --- CHECKPOINT TARGETS ---
-
+rule pre_assembly_qc:
+    input:
+        expand("results/00_qc/{sample}_pre_assembly_gate.tsv", sample=PACBIO_SAMPLES),
+        expand("results/00_qc/reads/nanoplot_{sample}/NanoPlot-report.html", sample=PACBIO_SAMPLES),
+        expand("results/00_qc/kmer/genomescope_{sample}/linear_plot.png", sample=PACBIO_SAMPLES)
 # Target 1: Stop after assembly and QC
 rule run_assembly:
     input:

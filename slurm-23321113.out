@@ -1,0 +1,55 @@
+Loading sratoolkit/3.0.0
+[2026-09-14T18:16:49.176] error: *** JOB 23321113 ON hive-as-11-4-45 CANCELLED AT 2026-09-14T18:16:49 DUE to SIGNAL Terminated ***
+
+############### Job 23321113 summary from  ###############
+Name                : get_data
+User                : jowhoa26
+Account             : fzmichelgrp
+Partition           : high
+Nodes               : hive-as-11-4-45
+Cores               : 4
+GPUs                : 0
+State               : CANCELLED by 2260253,CANCELLED
+ExitCode            : 0:0
+Submit              : 2026-09-14T18:12:48
+Start               : 2026-09-14T18:12:50
+End                 : 2026-09-14T18:16:50
+Reserved walltime   : 04:00:00
+Used walltime       : 00:04:00
+Used CPU time       : 00:00:24
+% User (Computation): 83.31%
+% System (I/O)      : 16.69%
+Mem reserved        : 16G
+Max Mem used        : 4.40G (hive-as-11-4-45)
+Max Disk Write      : 4.53G (hive-as-11-4-45)
+Max Disk Read       : 2.36M (hive-as-11-4-45)
+
+############### Job 23321113 info ###############
+JobId=23321113 JobName=get_data
+   UserId=jowhoa26(2260253) GroupId=jowhoa26(2260253) MCS_label=N/A
+   Priority=83572 Nice=0 Account=fzmichelgrp QOS=fzmichelgrp-high-qos
+   JobState=COMPLETING Reason=None Dependency=(null)
+   Requeue=1 Restarts=0 BatchFlag=1 Reboot=0 ExitCode=0:15
+   RunTime=00:03:59 TimeLimit=04:00:00 TimeMin=N/A
+   SubmitTime=2026-09-14T18:12:48 EligibleTime=2026-09-14T18:12:48
+   AccrueTime=2026-09-14T18:12:48
+   StartTime=2026-09-14T18:12:50 EndTime=2026-09-14T18:16:49 Deadline=N/A
+   SuspendTime=None SecsPreSuspend=0 LastSchedEval=2026-09-14T18:12:50 Scheduler=Main
+   Partition=high AllocNode:Sid=login2:3685443
+   ReqNodeList=(null) ExcNodeList=(null)
+   NodeList=hive-as-11-4-45
+   BatchHost=hive-as-11-4-45
+   NumNodes=1 NumCPUs=4 NumTasks=1 CPUs/Task=4 ReqB:S:C:T=0:0:*:*
+   ReqTRES=cpu=4,mem=16G,node=1,billing=4
+   AllocTRES=cpu=4,mem=16G,node=1,billing=4
+   Socks/Node=* NtasksPerN:B:S:C=0:0:*:* CoreSpec=*
+   MinCPUsNode=4 MinMemoryNode=16G MinTmpDiskNode=0
+   Features=(null) DelayBoot=00:00:00
+   OverSubscribe=OK Exclusive=NO Contiguous=0 Licenses=(null) LicensesAlloc=(null) Network=(null)
+   Command=/quobyte/fzmichelgrp/undergrads/Jonas/comparative_project/download.sh
+   SubmitLine=sbatch download.sh
+   WorkDir=/quobyte/fzmichelgrp/undergrads/Jonas/comparative_project
+   StdErr=
+   StdIn=/dev/null
+   StdOut=/quobyte/fzmichelgrp/undergrads/Jonas/comparative_project/slurm-23321113.out
+   TresPerTask=cpu=4
