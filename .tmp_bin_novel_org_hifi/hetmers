@@ -1,0 +1,4 @@
+#!/bin/bash
+CLEAN_ARGS=$(echo "$@" | sed 's/-eNone//g')
+REAL_BIN=$(which -a hetmers | grep -v "\.tmp_bin_novel_org_hifi" | head -n 1)
+eval "$REAL_BIN $CLEAN_ARGS"

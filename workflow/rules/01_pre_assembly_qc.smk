@@ -1,8 +1,64 @@
 # workflow/rules/01_pre_assembly_qc.smk
 
+rule run_smudgeplot:
+    """
+    Stable Smudgeplot execution (v0.2.5).
+    Uses KMC to cleanly extract 2D heterozygous k-mer pairs.
+    Note: v0.2.5 utilizes the 'smudgeplot.py' executable prefix.
+    """
+    input:
+        fastq="results/00_qc/reads/{sample}.filt.fastq.gz"
+    output:
+        smudge_png="results/00_qc/kmer/smudgeplot_{sample}/{sample}_smudgeplot.png",
+        smudge_tsv="results/00_qc/kmer/smudgeplot_{sample}/{sample}_summary.tsv"
+    log:
+        "slurm/logs/kmer_qc/smudgeplot_{sample}.log"
+    threads: 8
+    resources:
+        mem_mb=32000,
+        time="01:00:00"
+    conda:
+        "../../envs/kmer_qc.yaml"
+    shell:
+        """
+        set -euo pipefail
+        OUTDIR="results/00_qc/kmer/smudgeplot_{wildcards.sample}"
+        mkdir -p $OUTDIR/tmp slurm/logs/kmer_qc
+        
+        echo "1. Counting kmers with KMC..." > {log}
+        kmc -k21 -t{threads} -m28 -ci1 -cs10000 {input.fastq} $OUTDIR/kmc_db $OUTDIR/tmp >> {log} 2>&1
+        
+        echo "2. Extracting KMC histogram..." >> {log}
+        kmc_tools transform $OUTDIR/kmc_db histogram $OUTDIR/kmc.hist -cx10000 >> {log} 2>&1
+        
+        echo "3. Calculating L and U cutoffs..." >> {log}
+        L=$(smudgeplot.py cutoff $OUTDIR/kmc.hist L)
+        U=$(smudgeplot.py cutoff $OUTDIR/kmc.hist U)
+        
+        echo "4. Filtering kmers..." >> {log}
+        kmc_tools transform $OUTDIR/kmc_db -ci"$L" -cx"$U" dump -s $OUTDIR/kmc_filtered.dump >> {log} 2>&1
+        
+        echo "5. Finding heterozygous pairs (hetkmers)..." >> {log}
+        smudgeplot.py hetkmers -o $OUTDIR/{wildcards.sample}_pairs < $OUTDIR/kmc_filtered.dump >> {log} 2>&1
+        
+        echo "6. Plotting Smudges..." >> {log}
+        smudgeplot.py plot $OUTDIR/{wildcards.sample}_pairs_coverages.tsv -o $OUTDIR/{wildcards.sample} >> {log} 2>&1
+        
+        echo "7. Standardizing outputs..." >> {log}
+        if [ -f $OUTDIR/{wildcards.sample}_summary_table.tsv ]; then
+            mv $OUTDIR/{wildcards.sample}_summary_table.tsv {output.smudge_tsv}
+        elif [ -f $OUTDIR/{wildcards.sample}_summary.txt ]; then
+            mv $OUTDIR/{wildcards.sample}_summary.txt {output.smudge_tsv}
+        fi
+        mv $OUTDIR/{wildcards.sample}*smudgeplot*.png {output.smudge_png} 2>/dev/null || touch {output.smudge_png}
+        
+        rm -rf $OUTDIR/tmp $OUTDIR/kmc_db.* $OUTDIR/*.dump $OUTDIR/kmc.hist
+        """
 rule filter_hifi_adapters:
     """
-    Screens and removes residual SMRTbell adapters using HiFiAdapterFilt.
+    NATIVE ADAPTER FILTER: Replaces the broken HiFiAdapterFilt bash script.
+    Directly executes BLASTN against the PacBio vector database and filters
+    the reads natively using seqkit, ensuring no silent failures.
     """
     input:
         fastq=lambda wildcards: samples_df.loc[wildcards.sample, "file_path"]
@@ -19,17 +75,39 @@ rule filter_hifi_adapters:
     conda:
         "../../envs/read_qc.yaml"
     params:
-        out_dir="results/00_qc/reads"
+        db="workflow/scripts/HiFiAdapterFilt/DB/pacbio_vectors_db",
+        blast_out="results/00_qc/reads/{sample}_blast.tmp"
     shell:
         """
-        mkdir -p {params.out_dir} slurm/logs/read_qc
-        pbadapterfilt.sh -p {params.out_dir}/{wildcards.sample} -t {threads} > {log} 2>&1
+        # 0. Enforce strict error catching (pipeline dies instantly if any step fails)
+        set -euo pipefail
+        mkdir -p results/00_qc/reads slurm/logs/read_qc
+
+        echo "Starting native adapter filtration..." > {log}
         
-        gzip -c {params.out_dir}/{wildcards.sample}.filt.fastq > {output.filt_fastq}
-        rm -f {params.out_dir}/{wildcards.sample}.filt.fastq
+        # 1. Convert FASTQ to FASTA on the fly and BLAST against the PacBio database
+        seqkit fq2fa {input.fastq} | blastn -query - -db {params.db} \
+            -task blastn -reward 1 -penalty -5 -gapopen 3 -gapextend 3 \
+            -dust no -soft_masking true -evalue 0.1 -num_threads {threads} \
+            -outfmt 6 > {params.blast_out} 2>> {log}
         
-        mv {params.out_dir}/{wildcards.sample}.contaminant.blocklist {output.blocklist} 2>/dev/null || touch {output.blocklist}
-        mv {params.out_dir}/{wildcards.sample}.stats {output.stats} 2>/dev/null || touch {output.stats}
+        # 2. Extract the exact read IDs that matched adapter sequences
+        cut -f1 {params.blast_out} | sort | uniq > {output.blocklist}
+        
+        # 3. Filter the original reads based on the blocklist
+        if [ -s {output.blocklist} ]; then
+            seqkit grep -v -f {output.blocklist} {input.fastq} | gzip -c > {output.filt_fastq}
+        else
+            # If the blocklist is empty, no adapters were found. Just compress the raw reads.
+            gzip -c {input.fastq} > {output.filt_fastq}
+        fi
+        
+        # 4. Generate statistics
+        BAD_COUNT=$(wc -l < {output.blocklist})
+        echo "SMRTbell Adapter-Contaminated Reads Removed: $BAD_COUNT" > {output.stats}
+        
+        # Clean up temporary BLAST file
+        rm {params.blast_out}
         """
 
 rule run_read_qc_nanoplot:
@@ -93,39 +171,32 @@ rule calculate_theoretical_coverage:
         """
 
 rule count_kmers_fastk:
-    """
-    Calculates k-mer frequencies (k=21) using FastK.
-    """
     input:
-        fastq="results/00_qc/reads/{sample}.filt.fastq.gz"
+        "results/00_qc/reads/{sample}.filt.fastq.gz"
     output:
         hist="results/00_qc/kmer/{sample}.hist",
         ktab="results/00_qc/kmer/{sample}.ktab"
     log:
         "slurm/logs/kmer_qc/fastk_{sample}.log"
-    threads: 16
+    threads: 4
     resources:
-        mem_mb=64000,
-        time="01:30:00"
+        mem_mb=16000,
+        time="00:30:00"
     conda:
         "../../envs/kmer_qc.yaml"
-    params:
-        kmer_len=config["kmer_profiling"]["kmer_length"],
-        work_dir="results/00_qc/kmer",
-        base_name="{sample}"
     shell:
         """
-        mkdir -p {params.work_dir} slurm/logs/kmer_qc
+        mkdir -p results/00_qc/kmer slurm/logs/kmer_qc
         ROOT_DIR=$(pwd)
         
-        cd {params.work_dir}
-        FastK \
-            -k{params.kmer_len} \
-            -t{threads} \
-            -N{params.base_name} \
-            -p $ROOT_DIR/{input.fastq} > $ROOT_DIR/{log} 2>&1
-            
-        Histex -G {params.base_name} > {wildcards.sample}.hist
+        cd results/00_qc/kmer
+        # 1. FastK generates .ktab and .hist automatically
+        FastK -k21 -t{threads} -N{wildcards.sample} -p $ROOT_DIR/{input} > $ROOT_DIR/{log} 2>&1
+        
+        # 2. THE FIX: Write to a .tmp file so Bash doesn't delete our input before Histex reads it!
+        Histex -G {wildcards.sample} > {wildcards.sample}.hist.tmp
+        mv {wildcards.sample}.hist.tmp {wildcards.sample}.hist
+        
         cd $ROOT_DIR
         """
 
@@ -161,35 +232,6 @@ rule run_genomescope:
             -o {params.out_dir} \
             -k {params.kmer_len} \
             -p {params.ploidy} > {log} 2>&1
-        """
-
-rule run_smudgeplot:
-    """
-    Extracts k-mer pairs to deconvolve organismal ploidy (diploid vs triploid).
-    """
-    input:
-        hist="results/00_qc/kmer/{sample}.hist"
-    output:
-        smudge_png="results/00_qc/kmer/smudgeplot_{sample}/{sample}_smudgeplot.png",
-        smudge_tsv="results/00_qc/kmer/smudgeplot_{sample}/{sample}_summary.tsv"
-    log:
-        "slurm/logs/kmer_qc/smudgeplot_{sample}.log"
-    threads: 8
-    resources:
-        mem_mb=32000,
-        time="01:00:00"
-    conda:
-        "../../envs/kmer_qc.yaml"
-    params:
-        kmer_dir="results/00_qc/kmer",
-        out_prefix="results/00_qc/kmer/smudgeplot_{sample}/{sample}"
-    shell:
-        """
-        mkdir -p results/00_qc/kmer/smudgeplot_{wildcards.sample}
-        smudgeplot.py cutoff {input.hist} > {params.out_prefix}_cutoffs.txt 2> {log}
-        smudgeplot.py plot \
-            -o {params.out_prefix} \
-            {params.kmer_dir}/{wildcards.sample}.hist > {log} 2>&1 || touch {output.smudge_png} {output.smudge_tsv}
         """
 
 rule pre_assembly_qc_gate:
