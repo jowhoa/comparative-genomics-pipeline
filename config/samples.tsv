@@ -1,0 +1,2 @@
+sample_id	sra_accession	file_path	platform	read_type	isolate_name	notes
+Calibration_Isolate	SRR28741072	data/hifi/SRR28741072.fastq	PacBio_Sequel_II	HiFi	TBD	Calibration run

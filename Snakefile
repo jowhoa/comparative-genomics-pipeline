@@ -1,152 +1,32 @@
+# ==================================================
+# MASTER SNAKEFILE
+# Phytophthora infestans Comparative Genomics
+# ==================================================
+
 import pandas as pd
 
-configfile: "config.yaml"
-samples_df = pd.read_csv(config["sample_sheet"], sep="\t").set_index("sample_id", drop=False)
-PACBIO_SAMPLES = samples_df[samples_df['data_type'] == 'pacbio']['sample_id'].tolist()
-rna_matches = samples_df[samples_df['data_type'] == 'rnaseq']['file_path']
-RNA_READS = [rna_matches.iloc[0]] if not rna_matches.empty else []
-include: "workflow/rules/01_pre_assembly_qc.smk"
-# --- CHECKPOINT TARGETS ---
-rule pre_assembly_qc:
-    input:
-        expand("results/00_qc/{sample}_pre_assembly_gate.tsv", sample=PACBIO_SAMPLES),
-        expand("results/00_qc/reads/nanoplot_{sample}/NanoPlot-report.html", sample=PACBIO_SAMPLES),
-        expand("results/00_qc/kmer/genomescope_{sample}/linear_plot.png", sample=PACBIO_SAMPLES)
-# Target 1: Stop after assembly and QC
-rule run_assembly:
-    input:
-        expand("results/01_assembly/{sample}.fasta", sample=PACBIO_SAMPLES),
-        expand("results/01_assembly/QC/quast_{sample}/report.txt", sample=PACBIO_SAMPLES),
-        expand("results/01_assembly/QC/busco_{sample}/short_summary.txt", sample=PACBIO_SAMPLES),
-        expand("results/01_assembly/QC/blast_{sample}/{sample}.blast.out", sample=PACBIO_SAMPLES),
-        expand("results/01_assembly/QC/blast_{sample}/{sample}_dotplot.png", sample=PACBIO_SAMPLES)
-rule run_blast:
-    input:
-        assembly="results/01_assembly/{sample}.fasta",
-        reference=config["reference_genome"]
-    output:
-        blast_out="results/01_assembly/QC/blast_{sample}/{sample}.blast.out"
-    params:
-        # We tell it to build the temporary database inside the results folder
-        db_prefix="results/01_assembly/QC/blast_{sample}/ref_db"
-    threads:
-        8
-    conda:
-        "envs/blast.yaml"
-    shell:
-        """
-        makeblastdb -in {input.reference} -dbtype nucl -out {params.db_prefix}
-        
-        blastn -query {input.assembly} -db {params.db_prefix} -outfmt 6 -out {output.blast_out} -num_threads {threads}
-        """
-# Target 2: Stop after RNA mapping and Gene Prediction
-rule run_annotation:
-    input:
-        expand("results/02_annotation/{sample}_braker/braker.gff3", sample=PACBIO_SAMPLES)
+# 1. LOAD CONFIGURATION
+configfile: "config/config.yaml"
 
-# Target 3: The full pipeline (if you ever want to run it all at once)
+samples_df = pd.read_csv(config["sample_sheet"], sep="\t").set_index("sample_id", drop=False)
+# 2. TARGET RULE (The Finish Line)
 rule all:
     input:
-        rules.run_assembly.input,
-        rules.run_annotation.input
-# --- Phase 1: Assembly & QC ---
-def get_pacbio_reads(wildcards):
-    return samples_df.loc[wildcards.sample, "file_path"]
-
-rule run_hifiasm:
-    input:
-        reads=get_pacbio_reads
-    output:
-        gfa="results/01_assembly/{sample}.bp.p_ctg.gfa",
-        fasta="results/01_assembly/{sample}.fasta"
-    threads:
-        config["assembly_threads"]
-    conda:
-        "envs/assembly.yaml"
-    shell:
-        """
-        hifiasm -o results/01_assembly/{wildcards.sample} -t {threads} {input.reads}
-        awk '/^S/{{print ">"$2"\\n"$3}}' {output.gfa} > {output.fasta}
-        """
-
-rule run_quast:
-    input:
-        "results/01_assembly/{sample}.fasta"
-    output:
-        "results/01_assembly/QC/quast_{sample}/report.txt"
-    conda:
-        "envs/qc.yaml"
-    shell:
-        "quast.py {input} -o results/01_assembly/QC/quast_{wildcards.sample} --large"
-
-rule run_busco:
-    input:
-        "results/01_assembly/{sample}.fasta"
-    output:
-        "results/01_assembly/QC/busco_{sample}/short_summary.txt"
-    params:
-        lineage=config["busco_lineage"]
-    conda:
-        "envs/qc.yaml"
-    shell:
-        """
-        # 1. Run the normal BUSCO command
-        busco -i {input} -o busco_{wildcards.sample} --out_path results/01_assembly/QC -l eukaryota_odb10 -m genome --force
+        # 1. Ensure the QC gate passes for the Calibration Isolate
+        "results/00_qc/Calibration_Isolate_pre_assembly_gate.tsv",
         
-        # 2. Rename the dynamically generated file to match what Snakemake expects
-        mv results/01_assembly/QC/busco_{wildcards.sample}/short_summary.specific.*.txt {output}
-        """
-
-# --- Phase 2: Annotation ---
-rule map_rnaseq:
-    input:
-        genome="results/01_assembly/{sample}.fasta",
-        reads=RNA_READS
-    output:
-        bam="results/02_annotation/{sample}_rna_mapped.bam"
-    conda:
-        "envs/mapping.yaml"
-    shell:
-        "minimap2 -ax splice {input.genome} {input.reads} | samtools sort -o {output.bam}"
-
-# NEW RULE: BRAKER3
-rule run_braker:
-    input:
-        genome="results/01_assembly/{sample}.fasta",
-        bam="results/02_annotation/{sample}_rna_mapped.bam"
-    output:
-        # BRAKER creates a directory of files. We specify the main output file here.
-        gff3="results/02_annotation/{sample}_braker/braker.gff3"
-    params:
-        # We pull the species name from config.yaml so we can reuse this pipeline easily
-        species=config["species_name"]
-    threads:
-        8
-    conda:
-        "envs/annotation.yaml"
-    shell:
-        """
-        # Run the BRAKER3 pipeline
-        braker.pl \
-            --genome={input.genome} \
-            --bam={input.bam} \
-            --species={params.species}_{wildcards.sample} \
-            --workingdir=results/02_annotation/{wildcards.sample}_braker \
-            --threads={threads}
-        """
-rule generate_dotplot:
-    input:
-        blast="results/01_assembly/QC/blast_{sample}/{sample}.blast.out"
-    output:
-        plot="results/01_assembly/QC/blast_{sample}/{sample}_dotplot.png"
-    shell:
-        """
-        # 1. Automatically shrink the massive BLAST file
-        awk '$4 > 10000' {input.blast} > {input.blast}.tmp_filtered
+        # 2. Ensure hifiasm generates the FASTAs for all active parameters
+        expand(
+            "results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.p_ctg.fasta",
+            sample="Calibration_Isolate",
+            assembly_id=list(config["active_assemblies"].keys())
+        )
         
-        # 2. Pass the files directly to your Python script
-        python make_dotplot.py {input.blast}.tmp_filtered {output.plot}
-        
-        # 3. Clean up the temporary file to save storage space
-        rm {input.blast}.tmp_filtered
-        """
+        # (We will add the QUAST/BUSCO/BRAKER outputs back here in the next step
+        # once we verify that the hifiasm matrix successfully launches!)
+
+# 3. MODULE INCLUDES
+include: "workflow/rules/01_pre_assembly_qc.smk" 
+include: "workflow/rules/02_assemble.smk"       # Contains  hifiasm code
+include: "workflow/rules/03_evaluate.smk"       # Contains QUAST/BUSCO rules
+#include: "workflow/rules/04_annotate.smk"       # Contains BRAKER rules

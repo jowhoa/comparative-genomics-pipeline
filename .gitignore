@@ -17,3 +17,7 @@ __pycache__/
 *.fasta.gz
 *.fastq.gz
 busco_downloads/
+results/
+data/
+.snakemake/
+slurm/logs/

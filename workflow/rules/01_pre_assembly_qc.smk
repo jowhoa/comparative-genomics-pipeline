@@ -1,59 +1,5 @@
 # workflow/rules/01_pre_assembly_qc.smk
 
-rule run_smudgeplot:
-    """
-    Stable Smudgeplot execution (v0.2.5).
-    Uses KMC to cleanly extract 2D heterozygous k-mer pairs.
-    Note: v0.2.5 utilizes the 'smudgeplot.py' executable prefix.
-    """
-    input:
-        fastq="results/00_qc/reads/{sample}.filt.fastq.gz"
-    output:
-        smudge_png="results/00_qc/kmer/smudgeplot_{sample}/{sample}_smudgeplot.png",
-        smudge_tsv="results/00_qc/kmer/smudgeplot_{sample}/{sample}_summary.tsv"
-    log:
-        "slurm/logs/kmer_qc/smudgeplot_{sample}.log"
-    threads: 8
-    resources:
-        mem_mb=32000,
-        time="01:00:00"
-    conda:
-        "../../envs/kmer_qc.yaml"
-    shell:
-        """
-        set -euo pipefail
-        OUTDIR="results/00_qc/kmer/smudgeplot_{wildcards.sample}"
-        mkdir -p $OUTDIR/tmp slurm/logs/kmer_qc
-        
-        echo "1. Counting kmers with KMC..." > {log}
-        kmc -k21 -t{threads} -m28 -ci1 -cs10000 {input.fastq} $OUTDIR/kmc_db $OUTDIR/tmp >> {log} 2>&1
-        
-        echo "2. Extracting KMC histogram..." >> {log}
-        kmc_tools transform $OUTDIR/kmc_db histogram $OUTDIR/kmc.hist -cx10000 >> {log} 2>&1
-        
-        echo "3. Calculating L and U cutoffs..." >> {log}
-        L=$(smudgeplot.py cutoff $OUTDIR/kmc.hist L)
-        U=$(smudgeplot.py cutoff $OUTDIR/kmc.hist U)
-        
-        echo "4. Filtering kmers..." >> {log}
-        kmc_tools transform $OUTDIR/kmc_db -ci"$L" -cx"$U" dump -s $OUTDIR/kmc_filtered.dump >> {log} 2>&1
-        
-        echo "5. Finding heterozygous pairs (hetkmers)..." >> {log}
-        smudgeplot.py hetkmers -o $OUTDIR/{wildcards.sample}_pairs < $OUTDIR/kmc_filtered.dump >> {log} 2>&1
-        
-        echo "6. Plotting Smudges..." >> {log}
-        smudgeplot.py plot $OUTDIR/{wildcards.sample}_pairs_coverages.tsv -o $OUTDIR/{wildcards.sample} >> {log} 2>&1
-        
-        echo "7. Standardizing outputs..." >> {log}
-        if [ -f $OUTDIR/{wildcards.sample}_summary_table.tsv ]; then
-            mv $OUTDIR/{wildcards.sample}_summary_table.tsv {output.smudge_tsv}
-        elif [ -f $OUTDIR/{wildcards.sample}_summary.txt ]; then
-            mv $OUTDIR/{wildcards.sample}_summary.txt {output.smudge_tsv}
-        fi
-        mv $OUTDIR/{wildcards.sample}*smudgeplot*.png {output.smudge_png} 2>/dev/null || touch {output.smudge_png}
-        
-        rm -rf $OUTDIR/tmp $OUTDIR/kmc_db.* $OUTDIR/*.dump $OUTDIR/kmc.hist
-        """
 rule filter_hifi_adapters:
     """
     NATIVE ADAPTER FILTER: Replaces the broken HiFiAdapterFilt bash script.
@@ -243,7 +189,6 @@ rule pre_assembly_qc_gate:
         cov_json="results/00_qc/reads/{sample}_theoretical_coverage.json",
         gscope_summary="results/00_qc/kmer/genomescope_{sample}/summary.txt",
         nanostats="results/00_qc/reads/nanoplot_{sample}/NanoStats.txt",
-        smudge_png="results/00_qc/kmer/smudgeplot_{sample}/{sample}_smudgeplot.png"
     output:
         gate_report="results/00_qc/{sample}_pre_assembly_gate.tsv"
     log:
