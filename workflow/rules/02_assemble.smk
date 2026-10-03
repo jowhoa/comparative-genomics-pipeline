@@ -17,31 +17,27 @@ rule run_hifiasm:
     Executes hifiasm using dynamic parameters pulled from config.yaml.
     """
     input:
-        reads="results/00_qc/reads/{sample}.filt.fastq.gz" # Adjust this path if your QC'd reads live elsewhere
+        reads="results/00_qc/reads/{sample}.filt.fastq.gz"
     output:
-        # We target the primary contig GFA. hifiasm generates several other files, 
-        # but Snakemake only strictly needs to track the ones we use downstream.
-        primary_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.p_ctg.gfa",
-        alternate_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.a_ctg.gfa"
+        primary_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.bp.p_ctg.gfa",
+        alternate_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.bp.a_ctg.gfa"
     log:
         "slurm/logs/assembly/hifiasm_{sample}_{assembly_id}.log"
     threads: 
         config["assembly_threads"]
     resources:
-        mem_mb=120000, # 120GB RAM is standard for a 240Mb genome
-        time="24:00:00"
+        mem_mb=120000,
+        runtime=1440
     params:
-        # MAGIC HAPPENS HERE:
-        # The lambda function looks at the {assembly_id} wildcard (e.g., "l3_default"),
-        # goes into the config dictionary, and pulls out the string "-l3".
         flags=lambda wildcards: config["active_assemblies"][wildcards.assembly_id],
         prefix="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}"
     shell:
         """
-        # Run hifiasm with the injected flags
+        mkdir -p $(dirname {params.prefix})
+        mkdir -p $(dirname {log})
+
         hifiasm {params.flags} -o {params.prefix} -t {threads} {input.reads} 2> {log}
         """
-
 # 3. Graph-to-FASTA conversion
 rule gfa2fasta:
     """
@@ -49,7 +45,7 @@ rule gfa2fasta:
     This uses awk to extract the sequence lines from the GFA.
     """
     input:
-        gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.p_ctg.gfa"
+        gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.bp.p_ctg.gfa"
     output:
         fasta="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.p_ctg.fasta"
     log:

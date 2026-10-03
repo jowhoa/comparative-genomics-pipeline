@@ -14,12 +14,12 @@ rule filter_hifi_adapters:
         stats="results/00_qc/reads/{sample}.adapter_stats.txt"
     log:
         "slurm/logs/read_qc/adapter_filter_{sample}.log"
-    threads: 8
+    threads: 24
     resources:
         mem_mb=16000,
-        time="01:00:00"
+        runtime=1440
     conda:
-        "../../envs/read_qc.yaml"
+        "../envs/read_qc.yaml"
     params:
         db="workflow/scripts/HiFiAdapterFilt/DB/pacbio_vectors_db",
         blast_out="results/00_qc/reads/{sample}_blast.tmp"
@@ -70,9 +70,9 @@ rule run_read_qc_nanoplot:
     threads: 8
     resources:
         mem_mb=24000,
-        time="01:00:00"
+        runtime=360
     conda:
-        "../../envs/read_qc.yaml"
+        "../envs/read_qc.yaml"
     params:
         outdir="results/00_qc/reads/nanoplot_{sample}"
     shell:
@@ -103,7 +103,7 @@ rule calculate_theoretical_coverage:
         mem_mb=8000,
         time="00:30:00"
     conda:
-        "../../envs/read_qc.yaml"
+        "../envs/read_qc.yaml"
     params:
         expected_size=config["organism"]["expected_genome_size_bp"]
     shell:
@@ -129,7 +129,7 @@ rule count_kmers_fastk:
         mem_mb=16000,
         time="00:30:00"
     conda:
-        "../../envs/kmer_qc.yaml"
+        "../envs/kmer_qc.yaml"
     shell:
         """
         mkdir -p results/00_qc/kmer slurm/logs/kmer_qc
@@ -165,7 +165,7 @@ rule run_genomescope:
         mem_mb=16000,
         time="00:30:00"
     conda:
-        "../../envs/kmer_qc.yaml"
+        "../envs/kmer_qc.yaml"
     params:
         kmer_len=config["kmer_profiling"]["kmer_length"],
         ploidy=config["kmer_profiling"]["ploidy"],
