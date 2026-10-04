@@ -1,0 +1,9 @@
+name: read_qc
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - fastqc
+  - multiqc
+  - seqkit
+  - blast

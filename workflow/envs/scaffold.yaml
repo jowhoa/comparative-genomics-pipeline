@@ -1,0 +1,8 @@
+name: scaffold_env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - ragtag=2.1.0
+  - tidk=0.2.31

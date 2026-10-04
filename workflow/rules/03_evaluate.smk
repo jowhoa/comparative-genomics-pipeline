@@ -8,7 +8,7 @@ rule run_quast:
         html="results/03_evaluate/quast/{sample}_{assembly_id}/{sample}_{assembly_id}_report.html",
         tsv="results/03_evaluate/quast/{sample}_{assembly_id}/{sample}_{assembly_id}_report.tsv"
     log:
-        "slurm/logs/evaluate/quast_{sample}_{assembly_id}.log"
+        "results/logs/slurm/rule_quast_{sample}_{assembly_id}.log"
     conda:
         "../envs/quast.yaml"
     threads: 8
@@ -36,7 +36,7 @@ rule run_busco:
     output:
         summary="results/03_evaluate/busco/{sample}_{assembly_id}/short_summary.txt"
     log:
-        "slurm/logs/evaluate/busco_{sample}_{assembly_id}.log"
+        "results/logs/slurm/rule_busco_{sample}_{assembly_id}.log"
     conda:
         "../envs/busco.yaml"
     threads: 16
@@ -69,7 +69,7 @@ rule meryl_count:
     conda:
         "../envs/merqury.yaml"
     log:
-        "slurm/logs/evaluate/meryl_{sample}.log"
+        "results/logs/slurm/rule_meryl_{sample}.log"
     threads: 16
     resources:
         mem_mb=32000,
@@ -90,7 +90,7 @@ rule run_merqury:
         qv="results/03_evaluate/merqury/{sample}_{assembly_id}/{sample}_{assembly_id}.qv",
         completeness="results/03_evaluate/merqury/{sample}_{assembly_id}/{sample}_{assembly_id}.completeness.stats"
     log:
-        "slurm/logs/evaluate/merqury_{sample}_{assembly_id}.log"
+        "results/logs/slurm/rule_merqury_{sample}_{assembly_id}.log"
     conda:
         "../envs/merqury.yaml"
     threads: 8
@@ -111,24 +111,27 @@ rule run_merqury:
         # Use ROOT_DIR to ensure the script always finds the exact files
         merqury.sh $ROOT_DIR/{input.meryldb} $ROOT_DIR/{input.fasta} {params.prefix} > $ROOT_DIR/{log} 2>&1
         """
+
 rule run_blast:
     input:
         assembly="results/01_assembly/{sample}.fasta",
         reference=config["reference_genome"]
     output:
         blast_out="results/01_assembly/QC/blast_{sample}/{sample}.blast.out"
-    params:
-        # We tell it to build the temporary database inside the results folder
-        db_prefix="results/01_assembly/QC/blast_{sample}/ref_db"
-    threads:
-        8
+    log:
+        "results/logs/slurm/rule_blast_{sample}.log"
+    threads: 24
+    resources:
+        mem_mb=32000,
+        runtime=360
     conda:
-        "envs/blast.yaml"
+        "../envs/blast.yaml"
+    params:
+        db_prefix="results/01_assembly/QC/blast_{sample}/ref_db"
     shell:
         """
-        makeblastdb -in {input.reference} -dbtype nucl -out {params.db_prefix}
-
-        blastn -query {input.assembly} -db {params.db_prefix} -outfmt 6 -out {output.blast_out} -num_threads {threads}
+        makeblastdb -in {input.reference} -dbtype nucl -out {params.db_prefix} > {log} 2>&1
+        blastn -query {input.assembly} -db {params.db_prefix} -outfmt 6 -out {output.blast_out} -num_threads {threads} >> {log} 2>&1
         """
 
 rule generate_dotplot:
@@ -136,13 +139,21 @@ rule generate_dotplot:
         blast="results/01_assembly/QC/blast_{sample}/{sample}.blast.out"
     output:
         plot="results/01_assembly/QC/blast_{sample}/{sample}_dotplot.png"
+    log:
+        "results/logs/slurm/rule_generate_dotplot_{sample}.log"
+    threads: 1
+    resources:
+        mem_mb=8000,
+        runtime=30
+    conda:
+        "../envs/rbh_tools.yaml"
     shell:
         """
         # 1. Automatically shrink the massive BLAST file
         awk '$4 > 10000' {input.blast} > {input.blast}.tmp_filtered
 
-        # 2. Pass the files directly to your Python script
-        python make_dotplot.py {input.blast}.tmp_filtered {output.plot}
+        # 2. Pass the files directly to your Python script with explicit flags
+        python workflow/scripts/plot_alignments.py -i {input.blast}.tmp_filtered -o {output.plot} > {log} 2>&1
 
         # 3. Clean up the temporary file to save storage space
         rm {input.blast}.tmp_filtered

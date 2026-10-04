@@ -1,0 +1,9 @@
+# File: envs/kraken.yaml
+name: kraken_env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - kraken2=2.1.3
+  - krakentools=1.2

@@ -22,22 +22,22 @@ rule run_hifiasm:
         primary_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.bp.p_ctg.gfa",
         alternate_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.bp.a_ctg.gfa"
     log:
-        "slurm/logs/assembly/hifiasm_{sample}_{assembly_id}.log"
+        "results/logs/slurm/rule_hifiasm_{sample}_{assembly_id}.log"
     threads: 
         config["assembly_threads"]
     resources:
         mem_mb=120000,
         runtime=1440
+    conda:
+        "../envs/assembly.yaml"
     params:
         flags=lambda wildcards: config["active_assemblies"][wildcards.assembly_id],
         prefix="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}"
     shell:
         """
-        mkdir -p $(dirname {params.prefix})
-        mkdir -p $(dirname {log})
-
         hifiasm {params.flags} -o {params.prefix} -t {threads} {input.reads} 2> {log}
         """
+
 # 3. Graph-to-FASTA conversion
 rule gfa2fasta:
     """
@@ -49,11 +49,11 @@ rule gfa2fasta:
     output:
         fasta="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.p_ctg.fasta"
     log:
-        "slurm/logs/assembly/gfa2fasta_{sample}_{assembly_id}.log"
+        "results/logs/slurm/rule_gfa2fasta_{sample}_{assembly_id}.log"
     threads: 1
     resources:
         mem_mb=4000,
-        time="00:30:00"
+        runtime=30
     shell:
         """
         # Extracts the 'S' (Segment) lines from the GFA and formats them as standard FASTA

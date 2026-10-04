@@ -13,7 +13,7 @@ rule filter_hifi_adapters:
         blocklist="results/00_qc/reads/{sample}.contaminant.blocklist",
         stats="results/00_qc/reads/{sample}.adapter_stats.txt"
     log:
-        "slurm/logs/read_qc/adapter_filter_{sample}.log"
+        "results/logs/slurm/rule_filter_hifi_adapters_{sample}.log"
     threads: 24
     resources:
         mem_mb=16000,
@@ -27,7 +27,7 @@ rule filter_hifi_adapters:
         """
         # 0. Enforce strict error catching (pipeline dies instantly if any step fails)
         set -euo pipefail
-        mkdir -p results/00_qc/reads slurm/logs/read_qc
+        mkdir -p results/00_qc/reads
 
         echo "Starting native adapter filtration..." > {log}
         
@@ -66,7 +66,7 @@ rule run_read_qc_nanoplot:
         report_html="results/00_qc/reads/nanoplot_{sample}/NanoPlot-report.html",
         stats_txt="results/00_qc/reads/nanoplot_{sample}/NanoStats.txt"
     log:
-        "slurm/logs/read_qc/nanoplot_{sample}.log"
+        "results/logs/slurm/rule_nanoplot_{sample}.log"
     threads: 8
     resources:
         mem_mb=24000,
@@ -97,11 +97,11 @@ rule calculate_theoretical_coverage:
         tsv="results/00_qc/reads/{sample}_theoretical_coverage.tsv",
         json="results/00_qc/reads/{sample}_theoretical_coverage.json"
     log:
-        "slurm/logs/read_qc/coverage_{sample}.log"
+        "results/logs/slurm/rule_coverage_{sample}.log"
     threads: 1
     resources:
         mem_mb=8000,
-        time="00:30:00"
+        runtime=60
     conda:
         "../envs/read_qc.yaml"
     params:
@@ -123,16 +123,16 @@ rule count_kmers_fastk:
         hist="results/00_qc/kmer/{sample}.hist",
         ktab="results/00_qc/kmer/{sample}.ktab"
     log:
-        "slurm/logs/kmer_qc/fastk_{sample}.log"
+        "results/logs/slurm/rule_fastk_{sample}.log"
     threads: 4
     resources:
         mem_mb=16000,
-        time="00:30:00"
+        runtime=60
     conda:
         "../envs/kmer_qc.yaml"
     shell:
         """
-        mkdir -p results/00_qc/kmer slurm/logs/kmer_qc
+        mkdir -p results/00_qc/kmer
         ROOT_DIR=$(pwd)
         
         cd results/00_qc/kmer
@@ -159,11 +159,11 @@ rule run_genomescope:
         linear_plot="results/00_qc/kmer/genomescope_{sample}/linear_plot.png",
         log_plot="results/00_qc/kmer/genomescope_{sample}/log_plot.png"
     log:
-        "slurm/logs/kmer_qc/genomescope_{sample}.log"
+        "results/logs/slurm/rule_genomescope_{sample}.log"
     threads: 4
     resources:
         mem_mb=16000,
-        time="00:30:00"
+        runtime=60
     conda:
         "../envs/kmer_qc.yaml"
     params:
@@ -192,11 +192,11 @@ rule pre_assembly_qc_gate:
     output:
         gate_report="results/00_qc/{sample}_pre_assembly_gate.tsv"
     log:
-        "slurm/logs/read_qc/gate_{sample}.log"
+        "results/logs/slurm/rule_gate_{sample}.log"
     threads: 1
     resources:
         mem_mb=4000,
-        time="00:15:00"
+        runtime=15
     params:
         min_cov=config["organism"]["expected_min_coverage"],
         max_cov=config["organism"]["expected_max_coverage"]

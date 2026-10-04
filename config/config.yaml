@@ -1,10 +1,13 @@
-# ==========================================
-# PHYTOPHTHORA INFESTANS ASSEMBLY PIPELINE
-# Master Configuration File
-# ==========================================
+# config/config.yaml
 
+# --- Project & Data Inputs ---
 sample_sheet: "config/samples.tsv"
 reference_genome: "data/reference/phytophthora_reference.fasta"
+kraken_db: "data/reference/kraken2_mini_db"
+sra_accessions:
+  - "SRR38395621"
+  - "SRR38273058"
+  - "SRR11498169"
 
 # --- Organism Baseline Parameters ---
 organism:
@@ -29,12 +32,10 @@ kmer_profiling:
   ploidy: 2  # Baseline assumption for GenomeScope initialization
 
 # --- Phase 1: Assembly (hifiasm) Parameter Matrix ---
-# The key (e.g., 'l3_default') becomes the output folder name.
-# The value is the exact string of hifiasm flags passed to the shell.
 active_assemblies:
   # STAGE A (Baselines):
   l3_default: "-l3"
-  l0_raw: "-l0"
+  # l0_raw: "-l0"
 
   # STAGE B (Refinements - Uncomment later after evaluating Stage A):
   # l1_contained: "-l1"
@@ -45,8 +46,8 @@ active_assemblies:
 assembly_threads: 24
 
 # --- Phase 2: Evaluation & Annotation (BUSCO/BRAKER3) ---
-busco_lineage: "eukaryota_odb10"
-species_name: "my_novel_organism"
+species_name: "Phytophthora_infestans"
+busco_lineage: "stramenopiles_odb10"
 min_contig_length: 1000  # Ignore tiny, fragmented contigs
 
 # --- Phase 3: Phylogenetics (OrthoFinder & IQ-TREE) ---
