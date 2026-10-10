@@ -1,3 +1,43 @@
+rule run_hite:
+    input:
+        genome="results/scaffolds/{sample}_{assembly_id}/ragtag.scaffold.fasta"
+    output:
+        te_lib="results/hite/{sample}_{assembly_id}/confident_TE.cons.fa"
+    conda:
+        "../envs/hite.yaml"
+    threads: 48
+    resources:
+        mem_mb=64000,
+        runtime=1440
+    log:
+        "results/logs/slurm/rule_run_hite_{sample}_{assembly_id}.log"
+    shell:
+        """
+        python /quobyte/fzmichelgrp/undergrads/Jonas/comparative_project/HiTE/main.py \
+            --genome {input.genome} \
+            --thread {threads} \
+            --out_dir results/hite/{wildcards.sample}_{wildcards.assembly_id}/ > {log} 2>&1
+        """
+rule repeat_masker:
+    input:
+        genome="results/scaffolds/{sample}_{assembly_id}/ragtag.scaffold.fasta",
+        te_lib="results/hite/{sample}_{assembly_id}/confident_TE.cons.fa"
+    output:
+        masked_genome="results/scaffolds/{sample}_{assembly_id}/ragtag.scaffold.fasta.masked"
+    conda:
+        "../envs/repeatmasker.yaml"
+    threads: 48
+    resources:
+        mem_mb=32000,
+        runtime=1440
+    log:
+        "results/logs/slurm/rule_repeat_masker_{sample}_{assembly_id}.log"
+    shell:
+        """
+        RepeatMasker -pa {threads} -xsmall -lib {input.te_lib} \
+        -dir results/scaffolds/{wildcards.sample}_{wildcards.assembly_id}/ \
+        {input.genome} > {log} 2>&1
+        """
 # 1. Fetch paired-end RNA-seq from SRA
 rule download_rnaseq:
     output:
@@ -91,12 +131,12 @@ rule prepare_protein_evidence:
 # 5. Execute BRAKER3
 rule run_braker:
     input:
-        genome="results/scaffolds/{sample}_{assembly_id}/ragtag.scaffold.fasta",
+        genome="results/scaffolds/{sample}_{assembly_id}/ragtag.scaffold.fasta.masked",
         bams=expand("results/annotation/{{sample}}_{{assembly_id}}/{sra_id}_mapped.bam", sra_id=config["sra_accessions"]),
         proteins="data/proteins/Phytophthora_combined_proteins.fasta"
     output:
-        gff3="results/annotation/{sample}_{assembly_id}/braker/braker.gff3",
-        aa="results/annotation/{sample}_{assembly_id}/braker/braker.aa"
+        gtf = "results/annotation/{sample}_{assembly_id}/braker/braker.gtf",
+        codingseq = "results/annotation/{sample}_{assembly_id}/braker/braker.codingseq"
     log:
         "results/logs/slurm/rule_run_braker_{sample}_{assembly_id}.log"
     params:
@@ -105,17 +145,35 @@ rule run_braker:
     resources:
         mem_mb=256000,
         runtime=4320
-    conda:
-        "../envs/annotation.yaml"
     shell:
         """
-        BAM_LIST=$(echo {input.bams} | tr ' ' ',')
-        
-        braker.pl \
+        # 1. Safely split all inputs by space, filter strictly for .bam, and join with commas
+        BAM_LIST=$(echo {input.bams} | tr ' ' '\\n' | grep '\\.bam$' | tr '\\n' ',')
+        BAM_LIST=${{BAM_LIST%,}}
+
+        # 2. Define directories
+        LOCAL_CONFIG="$PWD/results/annotation/{wildcards.sample}_{wildcards.assembly_id}/augustus_config"
+        BRAKER_DIR="results/annotation/{wildcards.sample}_{wildcards.assembly_id}/braker"
+
+        # 3. FORCE CLEANUP: Delete dirty state from previous failed runs
+        rm -rf $LOCAL_CONFIG $BRAKER_DIR
+        mkdir -p $LOCAL_CONFIG
+
+        # 4. ISOLATION FIX: Prevent local Python packages in ~/.local from contaminating the container
+        export APPTAINERENV_PYTHONNOUSERSITE=1
+
+        # 5. Evaluate the wildcard INSIDE the container and explicitly bind the Quobyte drive
+        apptainer exec -B $PWD:$PWD /quobyte/fzmichelgrp/undergrads/Jonas/braker3.sif bash -c "cp -r /opt/Augustus/config/* $LOCAL_CONFIG/"
+
+        # 6. Force Apptainer to use your local writeable directory instead of its internal one
+        export APPTAINERENV_AUGUSTUS_CONFIG_PATH="$LOCAL_CONFIG"
+
+        # 7. Execute BRAKER3
+        apptainer exec -B $PWD:$PWD -B ~/.gm_key:/root/.gm_key /quobyte/fzmichelgrp/undergrads/Jonas/braker3.sif braker.pl \
             --genome={input.genome} \
             --prot_seq={input.proteins} \
             --bam=$BAM_LIST \
-            --species={params.species}_{wildcards.sample}_{wildcards.assembly_id} \
-            --workingdir=results/annotation/{wildcards.sample}_{wildcards.assembly_id}/braker \
+            --species=Phytophthora_infestans_{wildcards.sample}_{wildcards.assembly_id} \
+            --workingdir=$BRAKER_DIR \
             --threads={threads} > {log} 2>&1
         """
