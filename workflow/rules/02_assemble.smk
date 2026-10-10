@@ -19,8 +19,7 @@ rule run_hifiasm:
     input:
         reads="results/00_qc/reads/{sample}.filt.fastq.gz"
     output:
-        primary_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.bp.p_ctg.gfa",
-        alternate_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.bp.a_ctg.gfa"
+        primary_gfa="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.bp.p_ctg.gfa"
     log:
         "results/logs/slurm/rule_hifiasm_{sample}_{assembly_id}.log"
     threads: 

@@ -106,7 +106,6 @@ rule make_blast_db_reference:
     threads: 1
     resources:
         mem_mb=8000,
-        runtime=60
     conda:
         "../envs/rbh_tools.yaml"
     shell:
@@ -195,5 +194,5 @@ rule plot_raw_alignments:
         "../envs/rbh_tools.yaml"
     shell:
         """
-        python workflow/scripts/plot_alignments.py -i {input.raw_alignments} -o {output.dotplot} > {log} 2>&1
+        python workflow/scripts/plot_alignments.py {input} {output} > {log} 2>&1
         """

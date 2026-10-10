@@ -114,12 +114,12 @@ rule run_merqury:
 
 rule run_blast:
     input:
-        assembly="results/01_assembly/{sample}.fasta",
+        assembly="results/assemblies/{sample}/{assembly_id}/{sample}_{assembly_id}.p_ctg.fasta",
         reference=config["reference_genome"]
     output:
-        blast_out="results/01_assembly/QC/blast_{sample}/{sample}.blast.out"
+        blast_out="results/03_evaluate/blast/{sample}_{assembly_id}/{sample}_{assembly_id}.blast.out"
     log:
-        "results/logs/slurm/rule_blast_{sample}.log"
+        "results/logs/slurm/rule_blast_{sample}_{assembly_id}.log"
     threads: 24
     resources:
         mem_mb=32000,
@@ -127,7 +127,7 @@ rule run_blast:
     conda:
         "../envs/blast.yaml"
     params:
-        db_prefix="results/01_assembly/QC/blast_{sample}/ref_db"
+        db_prefix="results/03_evaluate/blast/{sample}_{assembly_id}/ref_db"
     shell:
         """
         makeblastdb -in {input.reference} -dbtype nucl -out {params.db_prefix} > {log} 2>&1
@@ -136,11 +136,11 @@ rule run_blast:
 
 rule generate_dotplot:
     input:
-        blast="results/01_assembly/QC/blast_{sample}/{sample}.blast.out"
+        blast="results/03_evaluate/blast/{sample}_{assembly_id}/{sample}_{assembly_id}.blast.out"
     output:
-        plot="results/01_assembly/QC/blast_{sample}/{sample}_dotplot.png"
+        plot="results/03_evaluate/blast/{sample}_{assembly_id}/{sample}_{assembly_id}_dotplot.png"
     log:
-        "results/logs/slurm/rule_generate_dotplot_{sample}.log"
+        "results/logs/slurm/rule_generate_dotplot_{sample}_{assembly_id}.log"
     threads: 1
     resources:
         mem_mb=8000,
@@ -150,11 +150,11 @@ rule generate_dotplot:
     shell:
         """
         # 1. Automatically shrink the massive BLAST file
-        awk '$4 > 10000' {input.blast} > {input.blast}.tmp_filtered
+        awk '$4 > 10000' {input} > {input}.tmp_filtered
 
-        # 2. Pass the files directly to your Python script with explicit flags
-        python workflow/scripts/plot_alignments.py -i {input.blast}.tmp_filtered -o {output.plot} > {log} 2>&1
+        # 2. Pass the files directly to your Python script without flags
+        python workflow/scripts/plot_alignments.py {input}.tmp_filtered {output} > {log} 2>&1
 
         # 3. Clean up the temporary file to save storage space
-        rm {input.blast}.tmp_filtered
+        rm {input}.tmp_filtered
         """

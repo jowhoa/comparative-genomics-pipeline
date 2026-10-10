@@ -7,3 +7,5 @@ dependencies:
   - multiqc
   - seqkit
   - blast
+  - seqkit
+  - nanoplot

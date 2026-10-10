@@ -1,11 +1,4 @@
-# workflow/rules/01_pre_assembly_qc.smk
-
 rule filter_hifi_adapters:
-    """
-    NATIVE ADAPTER FILTER: Replaces the broken HiFiAdapterFilt bash script.
-    Directly executes BLASTN against the PacBio vector database and filters
-    the reads natively using seqkit, ensuring no silent failures.
-    """
     input:
         fastq=lambda wildcards: samples_df.loc[wildcards.sample, "file_path"]
     output:
@@ -14,52 +7,60 @@ rule filter_hifi_adapters:
         stats="results/00_qc/reads/{sample}.adapter_stats.txt"
     log:
         "results/logs/slurm/rule_filter_hifi_adapters_{sample}.log"
-    threads: 24
+    threads: 8
     resources:
-        mem_mb=16000,
+        mem_mb=32000,
         runtime=1440
     conda:
         "../envs/read_qc.yaml"
     params:
-        db="workflow/scripts/HiFiAdapterFilt/DB/pacbio_vectors_db",
-        blast_out="results/00_qc/reads/{sample}_blast.tmp"
+        db="workflow/scripts/HiFiAdapterFilt/DB/pacbio_vectors_db"
     shell:
         """
-        # 0. Enforce strict error catching (pipeline dies instantly if any step fails)
         set -euo pipefail
         mkdir -p results/00_qc/reads
 
-        echo "Starting native adapter filtration..." > {log}
-        
-        # 1. Convert FASTQ to FASTA on the fly and BLAST against the PacBio database
-        seqkit fq2fa {input.fastq} | blastn -query - -db {params.db} \
-            -task blastn -reward 1 -penalty -5 -gapopen 3 -gapextend 3 \
-            -dust no -soft_masking true -evalue 0.1 -num_threads {threads} \
-            -outfmt 6 > {params.blast_out} 2>> {log}
-        
-        # 2. Extract the exact read IDs that matched adapter sequences
-        cut -f1 {params.blast_out} | sort | uniq > {output.blocklist}
-        
-        # 3. Filter the original reads based on the blocklist
+        echo "Starting chunked native adapter filtration on local SSD..." > {log}
+
+        LOCAL_FASTA="$TMPDIR/{wildcards.sample}_temp.fasta"
+        LOCAL_BLAST="$TMPDIR/{wildcards.sample}_blast.tmp"
+        LOCAL_CHUNKS="$TMPDIR/{wildcards.sample}_chunks"
+
+        # 1. Convert FASTQ to FASTA to SSD
+        seqkit fq2fa {input.fastq} > $LOCAL_FASTA 2>> {log}
+
+        # 2. Slice the 11GB file into 20 safe, bite-sized pieces
+        mkdir -p $LOCAL_CHUNKS
+        seqkit split2 -p 20 $LOCAL_FASTA -O $LOCAL_CHUNKS 2>> {log}
+
+        # 3. Loop BLAST over each chunk independently, appending (>>) to the master tmp file
+        touch $LOCAL_BLAST
+        for chunk in $LOCAL_CHUNKS/*.fasta*; do
+            echo "Processing $chunk..." >> {log}
+            blastn -query "$chunk" -db {params.db} \
+                -task blastn -reward 1 -penalty -5 -gapopen 3 -gapextend 3 \
+                -dust no -soft_masking true -evalue 0.1 -num_threads {threads} \
+                -outfmt 6 >> $LOCAL_BLAST 2>> {log}
+        done
+
+        # 4. Extract IDs to Quobyte
+        cut -f1 $LOCAL_BLAST | sort | uniq > {output.blocklist}
+
+        # 5. Filter original reads
         if [ -s {output.blocklist} ]; then
             seqkit grep -v -f {output.blocklist} {input.fastq} | gzip -c > {output.filt_fastq}
         else
-            # If the blocklist is empty, no adapters were found. Just compress the raw reads.
             gzip -c {input.fastq} > {output.filt_fastq}
         fi
-        
-        # 4. Generate statistics
+
+        # 6. Stats & Cleanup
         BAD_COUNT=$(wc -l < {output.blocklist})
         echo "SMRTbell Adapter-Contaminated Reads Removed: $BAD_COUNT" > {output.stats}
-        
-        # Clean up temporary BLAST file
-        rm {params.blast_out}
-        """
 
+        rm -rf $LOCAL_BLAST $LOCAL_FASTA $LOCAL_CHUNKS
+        echo "Filtration complete." >> {log}
+        """
 rule run_read_qc_nanoplot:
-    """
-    Profiles read length distribution, quality metrics (Q-scores), and yield.
-    """
     input:
         fastq="results/00_qc/reads/{sample}.filt.fastq.gz"
     output:
@@ -88,9 +89,6 @@ rule run_read_qc_nanoplot:
         """
 
 rule calculate_theoretical_coverage:
-    """
-    Calculates empirical data yield and compares against expected genome size.
-    """
     input:
         fastq="results/00_qc/reads/{sample}.filt.fastq.gz"
     output:
@@ -136,10 +134,8 @@ rule count_kmers_fastk:
         ROOT_DIR=$(pwd)
         
         cd results/00_qc/kmer
-        # 1. FastK generates .ktab and .hist automatically
         FastK -k21 -t{threads} -N{wildcards.sample} -p $ROOT_DIR/{input} > $ROOT_DIR/{log} 2>&1
         
-        # 2. THE FIX: Write to a .tmp file so Bash doesn't delete our input before Histex reads it!
         Histex -G {wildcards.sample} > {wildcards.sample}.hist.tmp
         mv {wildcards.sample}.hist.tmp {wildcards.sample}.hist
         
@@ -147,10 +143,6 @@ rule count_kmers_fastk:
         """
 
 rule run_genomescope:
-    """
-    Fits mathematical models to k-mer spectra to determine genome size,
-    heterozygosity rate, and repeat volume.
-    """
     input:
         hist="results/00_qc/kmer/{sample}.hist"
     output:
@@ -181,10 +173,6 @@ rule run_genomescope:
         """
 
 rule pre_assembly_qc_gate:
-    """
-    Aggregates metrics and evaluates whether the sequencing run meets 
-    the minimum criteria to justify launching hifiasm.
-    """
     input:
         cov_json="results/00_qc/reads/{sample}_theoretical_coverage.json",
         gscope_summary="results/00_qc/kmer/genomescope_{sample}/summary.txt",

@@ -27,7 +27,8 @@ rule all:
                assembly_id=list(config["active_assemblies"].keys())),
         expand("results/03_evaluate/merqury/Calibration_Isolate_{assembly_id}/Calibration_Isolate_{assembly_id}.qv",
                assembly_id=list(config["active_assemblies"].keys())),
-        "results/01_assembly/QC/blast_Calibration_Isolate/Calibration_Isolate_dotplot.png",
+        expand("results/03_evaluate/blast/Calibration_Isolate_{assembly_id}/Calibration_Isolate_{assembly_id}_dotplot.png",
+               assembly_id=list(config["active_assemblies"].keys())),
 
         # 4. Ensure Contamination Filtration, Scaffolding, Telomeres, and RBH runs
         expand(
@@ -41,14 +42,33 @@ rule all:
 
         # 5. Ensure BRAKER3 Gene Annotation runs
         expand(
-            "results/annotation/{sample}_{assembly_id}/braker/braker.aa",
+            "results/annotation/{sample}_{assembly_id}/braker/braker.codingseq",
+            sample="Calibration_Isolate",
+            assembly_id="l3_default"
+        ),
+        expand(
+            "results/annotation/{sample}_{assembly_id}/braker/braker.gtf",
+            sample="Calibration_Isolate",
+            assembly_id="l3_default"
+        ),
+        # 6. Reciprocal Best Hits Stringency Report
+        expand(
+            "results/rbh/{sample}_{assembly_id}/rbh_stringency_report.txt",
             sample="Calibration_Isolate",
             assembly_id="l3_default"
         )
-
 # 3. MODULE INCLUDES
 include: "workflow/rules/01_pre_assembly_qc.smk"
 include: "workflow/rules/02_assemble.smk"       # Contains hifiasm code
 include: "workflow/rules/03_evaluate.smk"       # Contains QUAST/BUSCO/Merqury & BLAST/Dotplot
 include: "workflow/rules/04_curate_and_scaffold.smk"
 include: "workflow/rules/05_annotate.smk"       # Contains BRAKER rules
+include: "workflow/rules/06_rbh.smk"
+# 4. PIPELINE COMPLETION HOOKS
+onsuccess:
+    print("Pipeline finished successfully. Generating PI job ledger...")
+    shell("python3 workflow/scripts/generate_pi_ledger.py")
+
+onerror:
+    print("Pipeline crashed. Generating PI job ledger to check for failures...")
+    shell("python3 workflow/scripts/generate_pi_ledger.py")
