@@ -10,3 +10,4 @@ slurm/
 *.tmp
 *.gfa
 HiTE/
+busco_downloads/
